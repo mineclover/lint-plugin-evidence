@@ -242,7 +242,8 @@ func TestSwaggerOperationsParticipateInCoverage(t *testing.T) {
 		},
 		map[string]*artifactInventory{"src/ref.ts": claimInventory},
 	)
-	problems := append(stateProblems, evaluateEvidenceGraph(states)...)
+	evaluation := evaluateEvidenceGraph(states)
+	problems := append(stateProblems, evaluation.Problems...)
 	joined := strings.Join(problems, "\n")
 	if !strings.Contains(joined, "Missing acknowledgement for 'GET:/members/{id}'") {
 		t.Fatalf("uncited GET operation did not fail coverage:\n%s", joined)
