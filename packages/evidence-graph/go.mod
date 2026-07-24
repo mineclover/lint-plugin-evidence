@@ -7,9 +7,16 @@
 // `source` directory itself, which is why this file lives one level above
 // ./native and is excluded from what ttsc copies.
 //
-// The replace directives point at a sibling checkout of samchon/ttsc
-// (../../../../samchon/ttsc relative to this package). Adjust them to your
-// layout, or delete this file — the ttsc build is unaffected either way.
+// The replace directives point at the canonical sibling checkout of
+// samchon/ttsc (../../../../samchon/ttsc relative to this package), matching
+// the CI layout:
+//
+//   samchon/
+//     evidence-graph/
+//     ttsc/
+//
+// Adjust them to a different local layout, or delete this file — the ttsc
+// build is unaffected either way.
 module github.com/samchon/evidence-graph/packages/evidence-graph
 
 go 1.26
