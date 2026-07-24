@@ -47,7 +47,13 @@ func (indexRule) Check(ctx *rule.ProjectContext) {
 		typescript,
 	)
 	problems = append(problems, stateProblems...)
-	problems = append(problems, evaluateEvidenceGraph(states)...)
+	evaluation := evaluateEvidenceGraph(states)
+	problems = append(problems, evaluation.Problems...)
+	if len(problems) == 0 && config.IndexOutput != "" {
+		if problem := writeResolvedEvidenceIndex(root, config.IndexOutput, states, evaluation.Resolved); problem != "" {
+			problems = append(problems, problem)
+		}
+	}
 	reportProblems(ctx, problems)
 }
 
@@ -179,7 +185,12 @@ func materializeClaimStates(
 	return states, problems
 }
 
-func evaluateEvidenceGraph(states []claimState) []string {
+type evidenceEvaluation struct {
+	Problems []string
+	Resolved map[string]*evidenceUnit
+}
+
+func evaluateEvidenceGraph(states []claimState) evidenceEvaluation {
 	problems := []string{}
 	targets := map[string]map[string]*evidenceUnit{}
 	markdownTargets := map[string]map[string]*evidenceUnit{}
@@ -212,7 +223,7 @@ func evaluateEvidenceGraph(states []claimState) []string {
 	}
 	sort.Strings(declarationIDs)
 
-	resolved := map[string]string{}
+	resolved := map[string]*evidenceUnit{}
 	for _, id := range declarationIDs {
 		declaration := declarations[id]
 		if !declaration.valid() {
@@ -230,8 +241,8 @@ func evaluateEvidenceGraph(states []claimState) []string {
 				"Unresolved evidence target '"+declaration.Target+"' at "+declaration.location()+": no configured source materializes that evidence unit. Correct the target or the owning source files/symbol selection.",
 			)
 		case 1:
-			for unitID := range candidates {
-				resolved[id] = unitID
+			for _, unit := range candidates {
+				resolved[id] = unit
 			}
 		default:
 			descriptions := make([]string, 0, len(candidates))
@@ -256,7 +267,11 @@ func evaluateEvidenceGraph(states []claimState) []string {
 			}
 			acknowledged := map[string]*evidenceDeclaration{}
 			for _, declaration := range state.Declarations {
-				scopeID := resolved[declaration.ID]
+				resolvedUnit := resolved[declaration.ID]
+				if resolvedUnit == nil {
+					continue
+				}
+				scopeID := resolvedUnit.ID
 				covered := reference.UnitsByScope[scopeID]
 				if len(covered) == 0 {
 					continue
@@ -303,7 +318,7 @@ func evaluateEvidenceGraph(states []claimState) []string {
 			}
 		}
 	}
-	return problems
+	return evidenceEvaluation{Problems: problems, Resolved: resolved}
 }
 
 func declarationCandidates(

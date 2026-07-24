@@ -565,8 +565,9 @@ func collectTypeScriptDeclarations(
 	supportedHosts map[*shimast.Node]symbolSet,
 ) {
 	type docHost struct {
-		node  *shimast.Node
-		hosts symbolSet
+		node        *shimast.Node
+		hosts       symbolSet
+		hostAnchors []evidenceHost
 	}
 	docs := map[string]docHost{}
 	walkTypeScriptNode(file.AsNode(), func(node *shimast.Node) {
@@ -575,7 +576,11 @@ func collectTypeScriptDeclarations(
 				continue
 			}
 			key := decimal(doc.Pos()) + ":" + decimal(doc.End())
-			candidate := docHost{node: doc, hosts: supportedHosts[node]}
+			candidate := docHost{
+				node:        doc,
+				hosts:       supportedHosts[node],
+				hostAnchors: typeScriptHostAnchors(path, node, supportedHosts[node], inventory.Units),
+			}
 			current, exists := docs[key]
 			if !exists {
 				docs[key] = candidate
@@ -587,6 +592,7 @@ func collectTypeScriptDeclarations(
 				}
 				current.hosts[symbol] = true
 			}
+			current.hostAnchors = mergeEvidenceHosts(current.hostAnchors, candidate.hostAnchors)
 			docs[key] = current
 		}
 	})
@@ -613,14 +619,15 @@ func collectTypeScriptDeclarations(
 		for _, parsed := range parseDeclarations(content[entry.node.Pos():entry.node.End()]) {
 			sequence++
 			inventory.Declarations = append(inventory.Declarations, &evidenceDeclaration{
-				ID:       "typescript:" + path + ":" + decimal(baseLine+parsed.LineOffset) + ":" + decimal(sequence),
-				Tag:      parsed.Tag,
-				Target:   parsed.Target,
-				Reason:   parsed.Reason,
-				Hosts:    entry.hosts,
-				Path:     path,
-				Line:     baseLine + parsed.LineOffset,
-				Sequence: sequence,
+				ID:          "typescript:" + path + ":" + decimal(baseLine+parsed.LineOffset) + ":" + decimal(sequence),
+				Tag:         parsed.Tag,
+				Target:      parsed.Target,
+				Reason:      parsed.Reason,
+				Hosts:       entry.hosts,
+				HostAnchors: translateEvidenceHostLines(content, entry.hostAnchors),
+				Path:        path,
+				Line:        baseLine + parsed.LineOffset,
+				Sequence:    sequence,
 			})
 		}
 	}
@@ -629,6 +636,62 @@ func collectTypeScriptDeclarations(
 		// the complete source text is available.
 		unit.Line = lineAt(content, unit.Line)
 	}
+}
+
+func typeScriptHostAnchors(
+	path string,
+	node *shimast.Node,
+	hosts symbolSet,
+	units []*evidenceUnit,
+) []evidenceHost {
+	if node == nil || len(hosts) == 0 {
+		return nil
+	}
+	anchors := []evidenceHost{}
+	for _, unit := range units {
+		if unit == nil || !hosts.contains(unit.Symbol) || unit.Line < node.Pos() || unit.Line > node.End() {
+			continue
+		}
+		anchors = append(anchors, evidenceHost{
+			Target: unit.Target,
+			Symbol: unit.Symbol,
+			Path:   path,
+			Line:   unit.Line,
+		})
+	}
+	return mergeEvidenceHosts(nil, anchors)
+}
+
+func mergeEvidenceHosts(base []evidenceHost, additions []evidenceHost) []evidenceHost {
+	seen := map[string]bool{}
+	merged := make([]evidenceHost, 0, len(base)+len(additions))
+	for _, host := range append(base, additions...) {
+		key := host.Path + ":" + host.Target + ":" + host.Symbol + ":" + decimal(host.Line)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		merged = append(merged, host)
+	}
+	sort.Slice(merged, func(left int, right int) bool {
+		if merged[left].Target != merged[right].Target {
+			return merged[left].Target < merged[right].Target
+		}
+		if merged[left].Symbol != merged[right].Symbol {
+			return merged[left].Symbol < merged[right].Symbol
+		}
+		return merged[left].Line < merged[right].Line
+	})
+	return merged
+}
+
+func translateEvidenceHostLines(content string, hosts []evidenceHost) []evidenceHost {
+	translated := make([]evidenceHost, 0, len(hosts))
+	for _, host := range hosts {
+		host.Line = lineAt(content, host.Line)
+		translated = append(translated, host)
+	}
+	return translated
 }
 
 func walkTypeScriptNode(node *shimast.Node, visit func(*shimast.Node)) {

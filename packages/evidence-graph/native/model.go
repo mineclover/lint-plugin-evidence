@@ -23,7 +23,8 @@ const (
 )
 
 type graphConfig struct {
-	Claims []claimSpec
+	Claims      []claimSpec
+	IndexOutput string
 }
 
 type claimSpec struct {
@@ -98,14 +99,25 @@ func (unit *evidenceUnit) location() string {
 }
 
 type evidenceDeclaration struct {
-	ID       string
-	Tag      tagKind
-	Target   string
-	Reason   string
-	Hosts    symbolSet
-	Path     string
-	Line     int
-	Sequence int
+	ID          string
+	Tag         tagKind
+	Target      string
+	Reason      string
+	Hosts       symbolSet
+	Path        string
+	Line        int
+	Sequence    int
+	HostAnchors []evidenceHost
+}
+
+// evidenceHost is intentionally expressed in public source terms rather than
+// compiler-graph ids. The graph producer stays replaceable and consumers can
+// resolve this anchor against their own current artifact.
+type evidenceHost struct {
+	Target string
+	Symbol string
+	Path   string
+	Line   int
 }
 
 func (declaration *evidenceDeclaration) location() string {
