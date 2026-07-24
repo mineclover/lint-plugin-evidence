@@ -248,7 +248,7 @@ func TestSwaggerOperationsParticipateInCoverage(t *testing.T) {
 		evaluateEvidenceGraph(
 			states,
 			newTypeScriptLoader("", map[string]*artifactInventory{"src/ref.ts": claimInventory}),
-		)...,
+		).Problems...,
 	)
 	joined := strings.Join(problems, "\n")
 	if !strings.Contains(joined, "Missing acknowledgement for 'GET:/members/{id}'") {

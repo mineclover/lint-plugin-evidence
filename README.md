@@ -97,6 +97,21 @@ Register the plugin in `lint.config.ts` and pass the graph declaration as the op
 
 Violations surface in every `ttsc` build, every `--noEmit` check, and every `ttsx` run. They arrive in the same stream as type errors. No separate CI job.
 
+### Publish a resolved index
+
+Set `index.output` when another tool needs the evidence declarations after the build has validated them:
+
+```ts
+const graph: IEvidenceGraphConfig = {
+  index: { output: ".graph/evidence-index.json" },
+  claims: [/* the same evidence obligations as above */],
+};
+```
+
+The file is written atomically only when the configured graph is valid. It records each resolved `@evidence` or `@evidenceExclude` declaration, its target and reason, the selected evidence unit, and public TypeScript host anchors. The artifact deliberately does not contain a `ttsc` or graph-router node ID: a consumer must resolve the source anchor against its current graph rather than trusting a producer-specific identity.
+
+`@mineclover/ttsc-graph-semantic` is one such consumer. It applies a separately declared target-to-tag policy and writes metadata that graph-router can attach to the current graph without patching `ttsc`.
+
 ### Compose
 
 ```ts

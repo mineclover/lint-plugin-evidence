@@ -50,7 +50,13 @@ func (graphRule) Check(ctx *rule.ProjectContext) {
 		loader,
 	)
 	problems = append(problems, stateProblems...)
-	problems = append(problems, evaluateEvidenceGraph(states, loader)...)
+	evaluation := evaluateEvidenceGraph(states, loader)
+	problems = append(problems, evaluation.Problems...)
+	if len(problems) == 0 && config.IndexOutput != "" {
+		if problem := writeResolvedEvidenceIndex(root, config.IndexOutput, states, evaluation.Resolved); problem != "" {
+			problems = append(problems, problem)
+		}
+	}
 	reportProblems(ctx, problems)
 	if len(problems) == 0 {
 		// Published only on a clean evaluation, because the host reads state
@@ -215,13 +221,19 @@ func materializeClaimStates(
 	return states, problems
 }
 
+type evidenceEvaluation struct {
+	Problems []string
+	Resolved map[string]*evidenceUnit
+}
+
 func evaluateEvidenceGraph(
 	states []claimState,
 	loader *typeScriptLoader,
-) []string {
+) evidenceEvaluation {
 	problems := []string{}
 	targets := map[string]map[string]*evidenceUnit{}
 	markdownTargets := map[string]map[string]*evidenceUnit{}
+	unitsByID := map[string]*evidenceUnit{}
 	// Scoped targets are keyed by owning file as well as name, which is what
 	// makes import-scope resolution unambiguous: two modules exporting `get`
 	// never compete, because resolution already knows which file it landed in.
@@ -236,6 +248,7 @@ func evaluateEvidenceGraph(
 				addressPath = reference.Paths[0]
 			}
 			for _, unit := range reference.Scopes {
+				unitsByID[unit.ID] = unit
 				for _, address := range append([]string{unit.Target}, unit.Aliases...) {
 					if targets[address] == nil {
 						targets[address] = map[string]*evidenceUnit{}
@@ -280,7 +293,7 @@ func evaluateEvidenceGraph(
 	}
 	sort.Strings(declarationIDs)
 
-	resolved := map[string]string{}
+	resolved := map[string]*evidenceUnit{}
 	for _, id := range declarationIDs {
 		declaration := declarations[id]
 		if !declaration.valid() {
@@ -300,7 +313,7 @@ func evaluateEvidenceGraph(
 				problems = append(problems, problem)
 				continue
 			}
-			resolved[id] = unitID
+			resolved[id] = unitsByID[unitID]
 			continue
 		}
 		if declaration.Type == artifactTypeScript &&
@@ -319,8 +332,8 @@ func evaluateEvidenceGraph(
 				"Unresolved evidence target '"+declaration.Target+"' at "+declaration.location()+": no configured source materializes that evidence unit. Correct the target or the owning source files/symbol selection.",
 			)
 		case 1:
-			for unitID := range candidates {
-				resolved[id] = unitID
+			for _, unit := range candidates {
+				resolved[id] = unit
 			}
 		default:
 			descriptions := make([]string, 0, len(candidates))
@@ -345,7 +358,11 @@ func evaluateEvidenceGraph(
 			}
 			acknowledged := map[string]*evidenceDeclaration{}
 			for _, declaration := range state.Declarations {
-				scopeID := resolved[declaration.ID]
+				resolvedUnit := resolved[declaration.ID]
+				if resolvedUnit == nil {
+					continue
+				}
+				scopeID := resolvedUnit.ID
 				covered := reference.UnitsByScope[scopeID]
 				if len(covered) == 0 {
 					continue
@@ -392,7 +409,7 @@ func evaluateEvidenceGraph(
 			}
 		}
 	}
-	return problems
+	return evidenceEvaluation{Problems: problems, Resolved: resolved}
 }
 
 // materializeEntryReference builds a population by walking an entry module's
