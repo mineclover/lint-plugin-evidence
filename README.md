@@ -1,12 +1,12 @@
-# `@samchon/evidence-graph`
+# `@samchon/lint-plugin-evidence`
 
-![Logo](https://raw.githubusercontent.com/samchon/evidence-graph/master/og.jpg)
+![Logo](https://raw.githubusercontent.com/samchon/lint-plugin-evidence/master/og.jpg)
 
-[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/samchon/evidence-graph/blob/master/LICENSE) [![NPM Version](https://img.shields.io/npm/v/@samchon/evidence-graph.svg)](https://www.npmjs.com/package/@samchon/evidence-graph) [![NPM Downloads](https://img.shields.io/npm/dm/@samchon/evidence-graph.svg)](https://www.npmjs.com/package/@samchon/evidence-graph) [![Build Status](https://github.com/samchon/evidence-graph/workflows/CI/badge.svg)](https://github.com/samchon/evidence-graph/actions?query=workflow%3ACI) [![Discord Badge](https://img.shields.io/badge/discord-samchon-d91965?style=flat&labelColor=5866f2&logo=discord&logoColor=white&link=https://discord.gg/E94XhzrUCZ)](https://discord.gg/E94XhzrUCZ)
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/samchon/lint-plugin-evidence/blob/master/LICENSE) [![NPM Version](https://img.shields.io/npm/v/@samchon/lint-plugin-evidence.svg)](https://www.npmjs.com/package/@samchon/lint-plugin-evidence) [![NPM Downloads](https://img.shields.io/npm/dm/@samchon/lint-plugin-evidence.svg)](https://www.npmjs.com/package/@samchon/lint-plugin-evidence) [![Build Status](https://github.com/samchon/lint-plugin-evidence/actions/workflows/build.yml/badge.svg)](https://github.com/samchon/lint-plugin-evidence/actions/workflows/build.yml) [![Discord Badge](https://img.shields.io/badge/discord-samchon-d91965?style=flat&labelColor=5866f2&logo=discord&logoColor=white&link=https://discord.gg/E94XhzrUCZ)](https://discord.gg/E94XhzrUCZ)
 
 The evidence graph for the AI coding era: the guardrail for goal mode.
 
-Your spec is now a compile error.
+> Your spec is now a compile error.
 
 When Claude Code or Codex works unattended, it can skip a requirement and still report "done." Evidence Graph makes every configured requirement demand an explicit acknowledgement from the code, test, or document that claims to satisfy it.
 
@@ -33,7 +33,7 @@ export function CouponStackingNotice() {
 >
 > ```bash
 > $ npx ttsc
-> error TS13830: [evidence-graph/index] Missing acknowledgement for
+> error TS16411: [evidence/graph] Missing acknowledgement for
 >   'docs/discount.md#coupon-stacking' (Markdown H2 'Coupon Stacking' at docs/discount.md:3)
 >   in Claim 1 reference 1 (markdown, symbols: h2, h3).
 >
@@ -50,7 +50,7 @@ export function CouponStackingNotice() {
 
 ```bash
 npm install -D typescript ttsc @ttsc/lint
-npm install -D @samchon/evidence-graph
+npm install -D @samchon/lint-plugin-evidence
 ```
 
 This is a lint plugin for [`@ttsc/lint`](https://github.com/samchon/ttsc/tree/master/packages/lint). It runs on [`ttsc`](https://github.com/samchon/ttsc), not on stock `tsc` with ESLint. If your build does not run `ttsc` yet, adopt that toolchain first.
@@ -92,7 +92,7 @@ canonical sibling checkout above or equivalent local replacement paths.
 ```ts
 // lint.config.ts
 import type { ITtscLintConfig } from "@ttsc/lint";
-import evidenceGraph, { type IEvidenceGraphConfig } from "@samchon/evidence-graph";
+import { evidence, type IEvidenceGraphConfig } from "@samchon/lint-plugin-evidence";
 
 const graph: IEvidenceGraphConfig = {
   claims: [
@@ -111,15 +111,19 @@ const graph: IEvidenceGraphConfig = {
 
 export default {
   plugins: {
-    "evidence-graph": evidenceGraph,
+    "evidence": evidence,
   },
   rules: {
-    "evidence-graph/index": ["error", graph],
+    "evidence/graph": ["error", graph],
+    "evidence/documented": "error",
+    "evidence/singular": "error",
   },
 } satisfies ITtscLintConfig;
 ```
 
-Register the plugin in `lint.config.ts` and pass the graph declaration as the option of the `evidence-graph/index` rule. This graph reads as one sentence: the React components under `src` claim to implement the docs, so every H2 and H3 section under `docs` must be cited by a component.
+Register the plugin in `lint.config.ts` and pass the graph declaration as the option of the `evidence/graph` rule. This graph reads as one sentence: the React components under `src` claim to implement the docs, so every H2 and H3 section under `docs` must be cited by a component.
+
+`evidence/graph` is project-scoped, so its entry must have no `files` selector; the host rejects one that does. Scope a file rule in its own entry when you need to.
 
 Violations surface in every `ttsc` build, every `--noEmit` check, and every `ttsx` run. They arrive in the same stream as type errors. No separate CI job.
 
@@ -219,6 +223,29 @@ Every Markdown or TypeScript `files` property takes project-relative glob patter
 - `frontend/src/components/**/*.tsx` selects every React component.
 - `test/features/**/*.ts` selects every feature test function.
 
+### TypeScript populations
+
+A TypeScript reference selects its population three ways, and the choice decides how its units are addressed.
+
+```ts
+// every exported type under src/contracts, addressed by its own name
+{ type: "typescript", files: ["src/contracts/**"] }
+
+// everything the entry exposes, addressed by its accessor path from that entry
+{ type: "typescript", file: "src/sdk/index.ts" }
+
+// the same, for a package a consumer installs
+{ type: "typescript", package: "@ORGANIZATION/PROJECT-api" }
+```
+
+`files` and `file` are mutually exclusive, and a local reference must set one of them; there is no implicit project entry.
+
+An entry-selected population is addressed the way a consumer reaches it, not the way the declaring file spells it: `export * as functional` nests a path segment, `export * from` flattens one, and `export { A as B }` addresses the symbol as `B`. That is what makes `api.functional.questions.get` nameable. Identity still belongs to the declaring file, so a symbol an entry exposes through two paths is one unit answering to two addresses — acknowledged once rather than owed twice.
+
+A `package` population is read from disk rather than from the `ttsc` program, which is the point: a symbol nothing imports is absent from the program by definition, and it is exactly the symbol an obligation needs to name. Without `file` or `files`, the package's declaration entry is the population, resolved through the `types` condition of its `exports` map, then `typesVersions`, then `types` or `typings` — never `main`, which names the JavaScript a consumer runs rather than the declarations a citation can address. With `files`, the globs are package-relative.
+
+The obligation set of a package reference belongs to whoever publishes it. A minor release that adds exports adds obligations, so pin the version or narrow the selection when the population is not yours.
+
 ### Swagger API references
 
 A Swagger reference owns exactly one document through its singular `file` property:
@@ -270,10 +297,34 @@ The target takes these forms:
 | `docs/sales.md` | A Markdown document and every selected heading below it |
 | `docs/sales.md#sale-price` | A heading section and its selected subsection descendants; the heading declares its anchor with the `{#sale-price}` suffix |
 | `POST:/members` | One Swagger or OpenAPI operation |
-| `IShoppingSale` | An exported type, function, or namespace; types and namespaces cover selected descendants |
-| `IShoppingSale.price` | One property of an exported type |
+| `{@link sales.IShoppingSale}` | An exported type, function, or namespace; types and namespaces cover selected descendants |
+| `{@link sales.IShoppingSale.price}` | One property of an exported type |
 
-Every target is one whitespace-delimited token. Swagger operations therefore use `<UPPERCASE_METHOD>:<path>`: write `@evidence POST:/members Creates a member`, not `@evidence POST /members Creates a member`. The latter still means target `POST` with `/members Creates a member` as its reason, preserving the existing grammar for a TypeScript symbol named `POST`.
+A path-addressed target is one whitespace-delimited token. Swagger operations therefore use `<UPPERCASE_METHOD>:<path>`: write `@evidence POST:/members Creates a member`, not `@evidence POST /members Creates a member`. The latter still means target `POST` with `/members Creates a member` as its reason, preserving the grammar for a TypeScript symbol named `POST`.
+
+A TypeScript target is written as an inline link and resolved through the citing module's imports:
+
+```ts
+import type * as sales from "./contracts/IShoppingSale.js";
+
+/**
+ * @evidence {@link sales.IShoppingSale} Renders the price exactly as the contract declares it.
+ */
+export function SalePrice(): null {
+  return null;
+}
+```
+
+The braces are not decoration. They are what makes the import legitimate, and the import is what makes the citation a reference instead of a string.
+
+```text
+$ npx ttsc check
+error TS16411: [evidence/graph] Unimported evidence target '{@link contracts.ISale}' at src/ui/SalePrice.ts:2: 'contracts' is not imported by this module, so the citation names a symbol this file does not reference. Import it; 'import type' is enough and is erased at emit.
+```
+
+TypeScript counts a symbol referenced from `{@link}` as used, so an import that exists only to carry a citation survives `noUnusedLocals`. It does not resolve names inside an unknown tag, so a bare `@evidence sales.IShoppingSale` would leave that import unreferenced and raise `TS6133`. Use `import type`, which is erased at emit and adds no runtime edge.
+
+Resolving through the module's own imports also removes an ambiguity that has no fix. A generated SDK puts the same leaf name in many modules, so `get` alone names several symbols; resolved from one file's bindings, `{@link api.functional.questions.get}` names exactly one.
 
 ```tsx
 /**
@@ -294,6 +345,8 @@ A React component cites the same way, and one declaration stacks as many disjoin
 ```
 
 A Markdown document cites in an HTML comment, so rendered prose stays clean. A heading-level citation sits right below its heading. A file-level citation sits at the top of the document. The target here is a TypeScript symbol name; this is the shape a graph uses when documentation owes the citations.
+
+Markdown keeps the plain token for a TypeScript target, because a document has no imports to resolve through. That is the one edge where a name must be unique across the repository for the citation to land — which is also what `evidence/singular` is for.
 
 ```md
 ## Editorial Terminology
@@ -317,7 +370,7 @@ At most one seller coupon and one platform coupon may combine on a single order.
 
 ```text
 $ npx ttsc check
-error TS13830: [evidence-graph/index] Missing acknowledgement for 'docs/discount.md#coupon-stacking' (Markdown H2 'Coupon Stacking' at docs/discount.md:3) in Claim 1 reference 1 (markdown, symbols: h2, h3). Add '@evidence docs/discount.md#coupon-stacking <reason>' to a selected typescript host of this claim, or '@evidenceExclude docs/discount.md#coupon-stacking <reason>' when this claim intentionally does not use it.
+error TS16411: [evidence/graph] Missing acknowledgement for 'docs/discount.md#coupon-stacking' (Markdown H2 'Coupon Stacking' at docs/discount.md:3) in Claim 1 reference 1 (markdown, symbols: h2, h3). Add '@evidence docs/discount.md#coupon-stacking <reason>' to a selected typescript host of this claim, or '@evidenceExclude docs/discount.md#coupon-stacking <reason>' when this claim intentionally does not use it.
 
 Found 1 error.
 ```
@@ -352,9 +405,13 @@ In an evidence graph a document is a set of claims that other artifacts point at
 
 Thanks for your support.
 
-Your [donation](https://github.com/sponsors/samchon) encourages `@samchon/evidence-graph` development.
+Your [donation](https://github.com/sponsors/samchon) encourages `@samchon/lint-plugin-evidence` development.
 
 ## References
 
 - [`ttsc`](https://github.com/samchon/ttsc): the `typescript-go` toolchain this plugin runs on.
 - [`@ttsc/lint`](https://github.com/samchon/ttsc/tree/master/packages/lint): the lint engine that links this rule into the compiler.
+
+Evidence Graph is being developed as an independent package while its rule model and adoption path mature. Once complete and stable, it may move into the `ttsc` repository as the official `@ttsc/lint-plugin-evidence` package.
+
+The longer-term plan also reaches beyond TypeScript: a standalone, language-agnostic evidence checker that can enforce the same graph across documents and code in any programming language, without depending on a single compiler or lint engine.

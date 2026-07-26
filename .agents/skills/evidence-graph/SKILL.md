@@ -1,13 +1,13 @@
 ---
 name: evidence-graph
-description: Defines the evidence graph domain model for @samchon/evidence-graph — the tag grammar, node kinds, hierarchy, reference resolution, obligation coverage, and exclusions. Use before changing rule semantics, the tag grammar, the configuration surface, or a diagnostic message; do not use for the mechanics of the Go rule API, which the lint-rule-authoring skill owns.
+description: Defines the evidence graph domain model for @samchon/lint-plugin-evidence — the tag grammar, node kinds, hierarchy, reference resolution, obligation coverage, and exclusions. Use before changing rule semantics, the tag grammar, the configuration surface, or a diagnostic message; do not use for the mechanics of the Go rule API, which the lint-rule-authoring skill owns.
 ---
 
 # Evidence Graph
 
 ## Product Contract
 
-An artifact that cites nothing has no proof it was needed. An artifact that cites a target no configured source declares has proof of nothing. `evidence-graph/index` turns both states into compile errors under the graph the consumer defines in `lint.config.ts`.
+An artifact that cites nothing has no proof it was needed. An artifact that cites a target no configured source declares has proof of nothing. `evidence/graph` turns both states into compile errors under the graph the consumer defines in `lint.config.ts`.
 
 The graph is configurable. Claims select the files and declaration hosts that owe acknowledgements; references select the evidence populations they owe. Every claim-reference pair is an independently complete obligation, and every element of a reference array remains separate.
 
@@ -20,13 +20,19 @@ Read `.wiki/references/autobe-mcp.md` before generalizing behavior from that pri
 @evidenceExclude <target> <reason>
 ```
 
-The first whitespace-delimited token is the target; everything after it is prose. A declaration may carry any number of tags. Every tag requires a target and non-empty reason and is validated independently.
+The target is one whitespace-delimited token, except that a target opening with `{@link`, `{@linkcode`, or `{@linkplain` runs to its closing brace. Everything after the target is prose. A declaration may carry any number of tags. Every tag requires a target and non-empty reason and is validated independently.
 
 ```ts
 /** @evidence docs/spec.md#pricing Sale price derives from this section. */
 /** @evidence POST:/members Member creation follows this API operation. */
-/** @evidence IShoppingSale The complete sale contract is mirrored here. */
+/** @evidence {@link ISale} The complete sale contract is mirrored here. */
 ```
+
+The two forms are two resolvers, and the token itself says which. A path address resolves against configured sources; an inline link resolves through the citing module's imports, so the citation is a real reference rather than a string that spells a symbol's name.
+
+**The braces are load-bearing, not decoration.** TypeScript resolves a name inside an inline link and counts it as a use, so an import that exists only to support a citation survives `noUnusedLocals`. It does not resolve names inside an unknown tag, so an unbraced symbol target leaves the import unreferenced and raises `TS6133`. Recommend `import type` for a citation-only import: it is erased at emit, creating no runtime dependency or cycle. A consumer also running `@typescript-eslint/no-unused-vars` still sees a false positive there, because that rule does not count JSDoc usage.
+
+Keeping the discrimination in the token is what preserves the parser's independence from reference context. Without a boundary character, `POST /members` would have to be guessed at, which is why a path target stays one token and only a code target may spend braces to buy one.
 
 The reason exists for review, not machine judgment. Do not add a rule that guesses whether prose is sincere; it will teach authors to write filler that passes.
 
@@ -62,13 +68,20 @@ Selectors classify public contracts semantically.
 - `"function"` selects exported function declarations, function-valued exported `const` declarations, public class callables, and namespace variants of those forms.
 - `"property"` selects direct properties of exported interfaces and object-shaped type aliases plus exported `const`, `let`, or `var` declarations at module or namespace scope. A `const` initialized with an arrow or function expression remains a function; every other variable, including a function-typed declaration or function-valued `let` or `var`, remains a property.
 
-Only public identities materialize. A top-level declaration needs an export modifier or local export-list alias; a namespace member needs to be exported from that namespace unless ambient namespace semantics make it implicitly public. A type-only namespace alias projects only public namespaces, interfaces, type aliases, and their type properties, never value-space data or callables. Re-exports whose declarations live in another file do not create a second unit.
+Only public identities materialize. A top-level declaration needs an export modifier or local export-list alias; a namespace member needs to be exported from that namespace unless ambient namespace semantics make it implicitly public. A type-only namespace alias projects only public namespaces, interfaces, type aliases, and their type properties, never value-space data or callables.
+
+**A re-export decides reachability, never identity.** The rule splits in two, and both halves are load-bearing.
+
+- **Identity stays with the declaring file.** A re-export whose declaration lives in another file creates no second unit. A symbol exposed through two barrels is one unit with one ID, acknowledged once — this is what stops a barrel from doubling every obligation beneath it.
+- **Reachability comes from the entry.** Under entry selection, traversal follows `export *`, `export * as ns`, and `export { A as B }` to decide _membership_ in the population, and gives each reached symbol its accessor path from the entry. `export * as functional` nests a segment, `export * from` flattens one, and an alias is addressed by its public name.
+
+A symbol reached by two paths therefore answers to two addresses and still owes one acknowledgement. Build those addresses from identity segments rather than by rewriting a joined target, or a literal dot inside a name collapses into qualification.
 
 A mixed variable statement can carry both function and property host kinds because TypeScript attaches one leading JSDoc block to the statement wrapper. Every public leaf of an object or array binding pattern is a property under its local binding name. Preserve the host set; choosing one kind makes the other selector spuriously out of scope.
 
 ## Evaluation
 
-`evidence-graph/index` evaluates the complete configured graph once per Program and answers three distinct questions.
+`evidence/graph` evaluates the complete configured graph once per Program and answers three distinct questions.
 
 - **Resolution.** Does every declaration target resolve to exactly one selected unit or structural ancestor?
 - **Host eligibility.** Does the declaration live on a symbol kind selected by its claim?
@@ -101,3 +114,6 @@ Most users meet this plugin only through an error message. State what is wrong, 
 - **Markdown separators normalize only for Markdown targets.** Do not rewrite TypeScript literal symbol names.
 - **Swagger methods canonicalize to uppercase; Swagger paths do not normalize.** `POST:/members` and `POST:/Members` are distinct.
 - **Qualified TypeScript segments stay encoded internally.** This prevents a literal dot from collapsing into namespace or property qualification.
+- **A merged identity reports the declaration encountered first.** Order is source position, never declaration kind, so `namespace ISale` written above `interface ISale` is the one every diagnostic names.
+- **A citation may sit on any declaration of a merged identity.** The relation is judged on the identity, so placement changes neither resolution nor coverage and is not worth a diagnostic.
+- **The unit model decides which declarations a citation may sit on.** A class registers no host, so `class Sale` beside `namespace Sale` leaves the namespace as the only declaration that can carry a tag for `Sale`. `evidence/documented` demands the block on the same declaration for the same reason, while `evidence/singular` still counts the pair as one identity — that rule is about a file's public surface, where the class is part of it.
