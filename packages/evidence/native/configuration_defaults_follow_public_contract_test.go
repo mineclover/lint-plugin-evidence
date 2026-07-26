@@ -30,6 +30,11 @@ func TestConfigurationDefaultsFollowPublicContract(t *testing.T) {
 				"type": "typescript",
 				"files": ["src/**"],
 				"reference": {"type": "markdown", "files": ["docs/**"]}
+			},
+			{
+				"type": "typescript",
+				"files": ["src/**"],
+				"reference": {"type": "prisma", "files": ["prisma/**"]}
 			}
 		]
 	}`))
@@ -47,6 +52,9 @@ func TestConfigurationDefaultsFollowPublicContract(t *testing.T) {
 	}
 	if got := config.Claims[1].References[0].Symbols.names(); got != "file, h1, h2, h3, h4" {
 		t.Fatalf("Markdown reference unit default = %q", got)
+	}
+	if got := config.Claims[2].References[0].Symbols.names(); got != "model, column, relation" {
+		t.Fatalf("Prisma reference unit default = %q", got)
 	}
 }
 
@@ -162,7 +170,7 @@ func TestConfigurationRejectsMalformedPublicBoundaries(t *testing.T) {
 				"files":["schema.prisma"],
 				"reference":{"type":"markdown","files":["docs/**"]}
 			}]}`,
-			want: "unsupported artifact type 'prisma'",
+			want: "Prisma is evidence-only and cannot be a claim",
 		},
 		{
 			name: "missing files",

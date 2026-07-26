@@ -184,6 +184,7 @@ A graph is one `claims` array, and every claim-reference pair is an independent 
 | Kind | `symbol` values | Default |
 | --- | --- | --- |
 | `"markdown"` | `"file"`, `"h1"`, `"h2"`, `"h3"`, `"h4"` | `["file", "h1", "h2", "h3", "h4"]` |
+| `"prisma"` | `"model"`, `"column"`, `"relation"` | all three |
 | `"swagger"` | No `symbol` property; every operation under `paths` is selected | every operation |
 | `"typescript"` | `"type"`, `"function"`, `"property"` | all three for claims, `"type"` for references |
 
@@ -195,7 +196,7 @@ A reference's `symbol` selects the evidence units one obligation covers, and an 
 
 A claim's `symbol` uses the same selector for the opposite side: it restricts which symbol kinds may host an `@evidence` tag. Namespaces are type hosts, exported data variables are property hosts, and a mixed variable statement can host either of its resident kinds. Omit either selector to accept its documented default.
 
-Swagger is reference-only. It cannot host declarations and has no `symbol` selector: each operation under the normalized document's `paths` object is one independent obligation.
+Prisma and Swagger are reference-only. They cannot host declarations. A Prisma reference selects schema files by `files` globs; its models, stored columns, and relations are addressable as `prisma:Model`, `prisma:Model.column`, and `prisma:Model.relation`. Swagger has no `symbol` selector: each operation under the normalized document's `paths` object is one independent obligation.
 
 ### File patterns
 
@@ -260,6 +261,28 @@ One-shot checks always evaluate the current Markdown, TypeScript, and Swagger so
 
 An `http:`/`https:` Swagger source is the one exception, and it is not a gap that will close. A URL has no filesystem event to observe, so its freshness is per-evaluation: every cycle refetches it, and nothing wakes the watcher when the served document changes.
 
+### Prisma schema references
+
+A Prisma reference selects one schema population through project-relative globs. A model target acknowledges each selected member below it, so one citation can cover a model and its persisted columns:
+
+```ts
+const graph: IEvidenceGraphConfig = {
+  claims: [
+    {
+      type: "typescript",
+      files: ["src/orders/**/*.ts"],
+      reference: {
+        type: "prisma",
+        files: ["prisma/**/*.prisma"],
+        symbol: ["model", "column"],
+      },
+    },
+  ],
+};
+```
+
+Write `@evidence prisma:Order ...` to acknowledge the `Order` model and its selected columns, or `@evidence prisma:Order.status ...` for one member. Prisma schema globs are declared to the v0.22 lint host, so creating, deleting, or editing a selected schema refreshes watch and editor diagnostics without a TypeScript edit.
+
 ## Evidence Tags
 
 The tags below are not yours to write. Your agent writes them as it implements, and your job is to review the stated reasons.
@@ -284,6 +307,8 @@ The target takes these forms:
 | `docs/sales.md` | A Markdown document and every selected heading below it |
 | `docs/sales.md#sale-price` | A heading section and its selected subsection descendants; the heading declares its anchor with the `{#sale-price}` suffix |
 | `POST:/members` | One Swagger or OpenAPI operation |
+| `prisma:Order` | A Prisma model and every selected column or relation below it |
+| `prisma:Order.status` | One Prisma column or relation |
 | `{@link sales.IShoppingSale}` | An exported type, function, or namespace; types and namespaces cover selected descendants |
 | `{@link sales.IShoppingSale.price}` | One property of an exported type |
 

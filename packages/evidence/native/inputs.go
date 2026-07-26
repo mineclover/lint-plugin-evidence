@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/samchon/ttsc/packages/lint/rule"
@@ -8,7 +9,7 @@ import (
 
 // ProjectInputs declares the files this rule reads from outside the Program.
 //
-// Markdown and Swagger evidence never enters the TypeScript Program, so until
+// Markdown, Prisma, and Swagger evidence never enters the TypeScript Program, so until
 // `@ttsc/lint@0.22.0` shipped this contract the host had no way to learn that
 // the graph depended on them. The resulting asymmetry was invisible rather than
 // merely inconvenient: a developer editing code saw fresh diagnostics, because
@@ -43,12 +44,14 @@ func graphProjectInputs(config graphConfig) []rule.ProjectInput {
 	inputs := []rule.ProjectInput{}
 	for _, claim := range config.Claims {
 		if claim.Type == artifactMarkdown {
-			inputs = append(inputs, markdownGlobInputs(claim.Files)...)
+			inputs = append(inputs, externalGlobInputs(claim.Files)...)
 		}
 		for _, reference := range claim.References {
 			switch reference.Type {
 			case artifactMarkdown:
-				inputs = append(inputs, markdownGlobInputs(reference.Files)...)
+				inputs = append(inputs, externalGlobInputs(reference.Files)...)
+			case artifactPrisma:
+				inputs = append(inputs, externalGlobInputs(reference.Files)...)
 			case artifactSwagger:
 				inputs = append(inputs, localSwaggerInputs(reference.Source)...)
 			}
@@ -57,7 +60,7 @@ func graphProjectInputs(config graphConfig) []rule.ProjectInput {
 	return inputs
 }
 
-// markdownGlobInputs publishes the positive half of one Markdown glob set.
+// externalGlobInputs publishes the positive half of one external-source glob set.
 //
 // Exclusions are dropped rather than translated, because the host's dependency
 // model has no negation — declaring `!docs/private/**` as a glob would watch
@@ -69,7 +72,7 @@ func graphProjectInputs(config graphConfig) []rule.ProjectInput {
 // The declared pattern is the compiled segment form rather than `Raw`, so the
 // host receives a project-relative pattern with the exclusion marker already
 // stripped, `\` already normalized to `/`, and a leading `./` already gone.
-func markdownGlobInputs(globs globSet) []rule.ProjectInput {
+func externalGlobInputs(globs globSet) []rule.ProjectInput {
 	inputs := make([]rule.ProjectInput, 0, len(globs.Patterns))
 	for _, pattern := range globs.Patterns {
 		if pattern.Exclude {
@@ -83,7 +86,8 @@ func markdownGlobInputs(globs globSet) []rule.ProjectInput {
 	return inputs
 }
 
-// localSwaggerInputs publishes a Swagger reference only when it names a file.
+// localSwaggerInputs publishes the directory population of a local Swagger
+// reference.
 //
 // Withholding the URL form is not a shortcut. The host rejects a remote pattern
 // outright (`linthost/project_inputs.go:159-161`), and one rejected input
@@ -92,6 +96,13 @@ func markdownGlobInputs(globs globSet) []rule.ProjectInput {
 // this graph's Markdown globs down with it and restore the exact blindness the
 // contract removes.
 //
+// A directory glob is deliberately used instead of an exact file input. The
+// v0.22 host records a missing exact path, but the filesystem watcher reports
+// creation through its parent directory; a directory population therefore
+// gives a generated Swagger document the same observable create event as an
+// existing document's edit. It may rebuild for a sibling in that directory,
+// which is preferable to a permanently stale citation.
+//
 // The boundary is also real rather than imposed: a URL has no filesystem event
 // to observe, so its freshness is per-evaluation and belongs to the loader.
 func localSwaggerInputs(source string) []rule.ProjectInput {
@@ -99,7 +110,7 @@ func localSwaggerInputs(source string) []rule.ProjectInput {
 		return nil
 	}
 	return []rule.ProjectInput{{
-		Kind:    rule.ProjectInputFile,
-		Pattern: source,
+		Kind:    rule.ProjectInputGlob,
+		Pattern: filepath.ToSlash(filepath.Join(filepath.Dir(filepath.FromSlash(source)), "**")),
 	}}
 }

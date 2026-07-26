@@ -26,7 +26,7 @@ export interface IEvidenceGraphDeclarationHost {
 export interface IEvidenceGraphResolvedTarget {
   id: string;
   target: string;
-  type: "markdown" | "swagger" | "typescript";
+  type: "markdown" | "prisma" | "swagger" | "typescript";
   symbol: string;
   source: { file: string; line: number };
 }

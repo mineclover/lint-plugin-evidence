@@ -84,26 +84,45 @@ func TestMarkdownClaimAndReferenceGlobsAreDeclared(t *testing.T) {
 }
 
 /**
- * Verifies a local Swagger reference is declared as one exact file.
+ * Verifies a local Swagger reference is declared as its directory population.
  *
- * A Swagger reference owns one exact path, so declaring it as a glob would ask
- * the host to maintain a population where a single dependency exists. The kind
- * is what tells the host it must keep watching while the file is missing, which
- * is how a document that has not been generated yet becomes observable the
- * moment it appears.
+ * A Swagger reference owns one exact path, but generated documents do not
+ * exist when watch mode starts. Publishing the parent directory as a glob is
+ * what lets the v0.22 host observe the eventual create event.
  *
  *  1. Configure a claim citing a project-relative Swagger document.
  *  2. Publish the rule's project inputs.
- *  3. Assert the document is declared exactly once, as a file.
+ *  3. Assert the parent directory is declared once as a glob.
  */
-func TestLocalSwaggerReferenceIsDeclaredAsAFile(t *testing.T) {
+func TestLocalSwaggerReferenceDeclaresItsDirectoryGlob(t *testing.T) {
 	inputs := declaredInputs(t, `{"claims":[{
 		"type":"typescript",
 		"files":["src/**"],
 		"reference":{"type":"swagger","file":"assets/swagger.json"}
 	}]}`)
-	assertDeclares(t, inputs, rule.ProjectInputFile, []string{"assets/swagger.json"})
-	assertDeclares(t, inputs, rule.ProjectInputGlob, nil)
+	assertDeclares(t, inputs, rule.ProjectInputFile, nil)
+	assertDeclares(t, inputs, rule.ProjectInputGlob, []string{"assets/**"})
+}
+
+/**
+ * Verifies a Prisma reference is declared as its positive schema-glob population.
+ *
+ * Prisma reads every matching schema file as one external set, so a host must
+ * observe the same positive globs rather than the current files one by one. A
+ * missing schema and a later-generated schema are both part of that topology.
+ *
+ *  1. Configure a TypeScript claim that cites Prisma models and columns.
+ *  2. Publish project inputs before any schema file exists.
+ *  3. Assert the positive schema glob is declared and its exclusion is absent.
+ */
+func TestPrismaReferenceGlobsAreDeclared(t *testing.T) {
+	inputs := declaredInputs(t, `{"claims":[{
+		"type":"typescript",
+		"files":["src/**"],
+		"reference":{"type":"prisma","files":["prisma/**/*.prisma","!prisma/generated/**"],"symbol":["model","column"]}
+	}]}`)
+	assertDeclares(t, inputs, rule.ProjectInputGlob, []string{"prisma/**/*.prisma"})
+	assertDeclares(t, inputs, rule.ProjectInputFile, nil)
 }
 
 /**

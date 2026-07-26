@@ -4,6 +4,7 @@ export * from "./IEvidenceGraphConfig";
 export * from "./IEvidenceGraphIndexOutput";
 export * from "./IEvidenceGraphMarkdownClaim";
 export * from "./IEvidenceGraphMarkdownReference";
+export * from "./IEvidenceGraphPrismaReference";
 export * from "./IEvidenceGraphReference";
 export * from "./IEvidenceGraphSwaggerReference";
 export * from "./IEvidenceGraphTypeScriptClaim";

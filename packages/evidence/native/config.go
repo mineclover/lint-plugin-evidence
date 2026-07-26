@@ -169,7 +169,7 @@ func decodeReference(raw json.RawMessage, index int, path string) (referenceSpec
 		if _, exists := object["package"]; exists {
 			problems = append(
 				problems,
-				"Invalid evidence/graph configuration at "+path+".package: only a TypeScript reference can select an installed package; Markdown and Swagger evidence lives in this project.",
+				"Invalid evidence/graph configuration at "+path+".package: only a TypeScript reference can select an installed package; Markdown, Prisma, and Swagger evidence live in this project.",
 			)
 		}
 	}
@@ -339,7 +339,7 @@ func normalizePackageName(value string) (string, string) {
 func decodeArtifactKind(
 	raw json.RawMessage,
 	path string,
-	allowSwagger bool,
+	allowEvidenceReference bool,
 ) (artifactKind, string) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return "", "Invalid evidence/graph configuration at " + path + ": the artifact discriminator is required."
@@ -351,15 +351,19 @@ func decodeArtifactKind(
 	switch artifactKind(value) {
 	case artifactMarkdown, artifactTypeScript:
 		return artifactKind(value), ""
-	case artifactSwagger:
-		if allowSwagger {
-			return artifactSwagger, ""
+	case artifactPrisma, artifactSwagger:
+		if allowEvidenceReference {
+			return artifactKind(value), ""
 		}
-		return "", "Invalid evidence/graph configuration at " + path + ": Swagger is evidence-only and cannot be a claim; expected 'markdown' or 'typescript'."
+		name := "Prisma"
+		if artifactKind(value) == artifactSwagger {
+			name = "Swagger"
+		}
+		return "", "Invalid evidence/graph configuration at " + path + ": " + name + " is evidence-only and cannot be a claim; expected 'markdown' or 'typescript'."
 	default:
 		expected := "'markdown' or 'typescript'"
-		if allowSwagger {
-			expected = "'markdown', 'swagger', or 'typescript'"
+		if allowEvidenceReference {
+			expected = "'markdown', 'prisma', 'swagger', or 'typescript'"
 		}
 		return "", "Invalid evidence/graph configuration at " + path + ": unsupported artifact type '" + value + "'; expected " + expected + "."
 	}
@@ -453,6 +457,8 @@ func decodeSymbols(
 		switch {
 		case kind == artifactMarkdown:
 			values = []string{"file", "h1", "h2", "h3", "h4"}
+		case kind == artifactPrisma && unit:
+			values = []string{"model", "column", "relation"}
 		case kind == artifactTypeScript && unit:
 			values = []string{"type"}
 		default:
@@ -481,6 +487,10 @@ func decodeSymbols(
 	allowed := map[string]bool{}
 	if kind == artifactMarkdown {
 		for _, symbol := range []string{"file", "h1", "h2", "h3", "h4"} {
+			allowed[symbol] = true
+		}
+	} else if kind == artifactPrisma {
+		for _, symbol := range []string{"model", "column", "relation"} {
 			allowed[symbol] = true
 		}
 	} else {
