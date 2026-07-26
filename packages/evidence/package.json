@@ -1,6 +1,6 @@
 {
   "name": "@samchon/lint-plugin-evidence",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Evidence-graph lint contributor for @ttsc/lint: declare provenance with a JSDoc @evidence tag and fail the build when it is missing or dangling.",
   "main": "src/index.ts",
   "exports": {
@@ -50,7 +50,7 @@
     "url": "https://github.com/samchon/lint-plugin-evidence/issues"
   },
   "peerDependencies": {
-    "@ttsc/lint": ">=0.20.0"
+    "@ttsc/lint": ">=0.22.0"
   },
   "devDependencies": {
     "@ttsc/lint": "catalog:typescript",
@@ -60,6 +60,7 @@
     "typescript": "catalog:typescript"
   },
   "dependencies": {
+    "@prisma/prisma-schema-wasm": "catalog:prisma",
     "@typia/interface": "catalog:typia",
     "@typia/utils": "catalog:typia",
     "yaml": "catalog:utils"

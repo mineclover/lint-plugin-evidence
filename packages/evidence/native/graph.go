@@ -37,14 +37,17 @@ func (graphRule) Check(ctx *rule.ProjectContext) {
 	}
 
 	markdown, markdownProblems := loadMarkdownInventories(root, config)
+	prisma, prismaProblems := loadPrismaInventories(root, config)
 	swagger, swaggerProblems := loadSwaggerInventories(root, config)
 	typescript := loadTypeScriptInventories(root, ctx.Sources)
 	problems = append(problems, markdownProblems...)
+	problems = append(problems, prismaProblems...)
 	problems = append(problems, swaggerProblems...)
 	loader := newTypeScriptLoader(root, typescript)
 	states, stateProblems := materializeClaimStates(
 		config,
 		markdown,
+		prisma,
 		swagger,
 		typescript,
 		loader,
@@ -67,6 +70,7 @@ func (graphRule) Check(ctx *rule.ProjectContext) {
 		ctx.SetState(graphCorpus{
 			Config:   config,
 			Markdown: markdown,
+			Prisma:   prisma,
 			Swagger:  swagger,
 		})
 	}
@@ -97,6 +101,7 @@ func evidenceProjectRoot(identity rule.ProjectIdentity) string {
 func materializeClaimStates(
 	config graphConfig,
 	markdown map[string]*artifactInventory,
+	prisma map[string]*artifactInventory,
 	swagger map[string]*artifactInventory,
 	typescript map[string]*artifactInventory,
 	loader *typeScriptLoader,
@@ -104,7 +109,7 @@ func materializeClaimStates(
 	states := make([]claimState, 0, len(config.Claims))
 	problems := []string{}
 	for _, claim := range config.Claims {
-		inventories := inventoriesOf(claim.Type, markdown, swagger, typescript)
+		inventories := inventoriesOf(claim.Type, markdown, prisma, swagger, typescript)
 		paths := matchingInventoryPaths(inventories, claim.Files)
 		state := claimState{Spec: claim, Paths: paths}
 		if len(paths) == 0 {
@@ -123,6 +128,7 @@ func materializeClaimStates(
 			referenceInventories := inventoriesOf(
 				reference.Type,
 				markdown,
+				prisma,
 				swagger,
 				typescript,
 			)
@@ -696,12 +702,15 @@ func declarationCandidates(
 func inventoriesOf(
 	kind artifactKind,
 	markdown map[string]*artifactInventory,
+	prisma map[string]*artifactInventory,
 	swagger map[string]*artifactInventory,
 	typescript map[string]*artifactInventory,
 ) map[string]*artifactInventory {
 	switch kind {
 	case artifactMarkdown:
 		return markdown
+	case artifactPrisma:
+		return prisma
 	case artifactSwagger:
 		return swagger
 	case artifactTypeScript:

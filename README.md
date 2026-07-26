@@ -53,7 +53,7 @@ npm install -D typescript ttsc @ttsc/lint
 npm install -D @samchon/lint-plugin-evidence
 ```
 
-This is a lint plugin for [`@ttsc/lint`](https://github.com/samchon/ttsc/tree/master/packages/lint). It runs on [`ttsc`](https://github.com/samchon/ttsc), not on stock `tsc` with ESLint. If your build does not run `ttsc` yet, adopt that toolchain first.
+This is a lint plugin for [`@ttsc/lint`](https://github.com/samchon/ttsc/tree/master/packages/lint), version 0.22 or newer. It runs on [`ttsc`](https://github.com/samchon/ttsc), not on stock `tsc` with ESLint. If your build does not run `ttsc` yet, adopt that toolchain first.
 
 The first build can take several minutes; it links the rule into the lint binary once, and later builds reuse it.
 
@@ -252,9 +252,13 @@ const graph: IEvidenceGraphConfig = {
 
 Swagger 2.0 and OpenAPI 3.0, 3.1, and 3.2 JSON or YAML documents are normalized through `@typia/utils` to `OpenApi.IDocument` before indexing. A local document is read and a remote document is fetched on every evidence-graph project evaluation; failures, non-2xx responses, invalid documents, 30-second remote timeouts, and documents larger than 16 MiB fail the build.
 
+Normalization runs a Node process, and starting it costs far more than the document itself — 198 ms for a 3-operation document against 234 ms for a 240-operation one, measured on this repository's own bridge. A local document is therefore read every evaluation but re-normalized only when its bytes changed, so a watch session or an editor stops paying that toll for a spec nobody touched. The key is the content, not a timestamp or a size, which is why an edit that happens to preserve both is still seen. A remote document has no such key without fetching it, so it is normalized every evaluation.
+
 Only operations under `paths` become evidence units. Webhooks and component schemas are outside this reference type. Standard and additional operation methods use the same target identity.
 
-One-shot checks always evaluate the current Markdown, TypeScript, and Swagger sources. The current `ttsc check --watch` host does not start a new cycle for a standalone Markdown or local Swagger edit, and its LSP invalidates external changes without immediately republishing project diagnostics; the next TypeScript-triggered cycle is fresh. Upstream tracking lives in [the external-input contract](https://github.com/samchon/ttsc/issues/971), [CLI watch integration](https://github.com/samchon/ttsc/issues/973), and [LSP diagnostic refresh](https://github.com/samchon/ttsc/issues/974).
+One-shot checks always evaluate the current Markdown, TypeScript, and Swagger sources. `ttsc check --watch` and the editor server do too: the rule declares its configured Markdown globs and local Swagger paths to the host, so editing a spec section or regenerating an OpenAPI document starts the next cycle on its own, with no TypeScript file touched. A path stays declared while it is missing, which is what lets a document that has not been generated yet be observed the moment it appears.
+
+An `http:`/`https:` Swagger source is the one exception, and it is not a gap that will close. A URL has no filesystem event to observe, so its freshness is per-evaluation: every cycle refetches it, and nothing wakes the watcher when the served document changes.
 
 ## Evidence Tags
 
