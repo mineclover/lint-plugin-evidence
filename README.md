@@ -59,33 +59,16 @@ The first build can take several minutes; it links the rule into the lint binary
 
 ### Local native tests
 
-The checked-in `packages/evidence-graph/go.mod` is only for local Go tooling
-such as `go test ./native`. Its local replacements expect the evidence plugin
-and `ttsc` repositories to be checked out as siblings:
-
-```text
-samchon/
-  evidence-graph/
-  ttsc/
-```
-
-Create that layout before running the complete contributor test suite:
+The checked-in `packages/evidence/go.mod` is only for local Go tooling such as `go test ./native`. Its local replacements use the `ttsc` packages installed by pnpm, so the repository does not need a sibling `ttsc` checkout.
 
 ```bash
-mkdir -p ~/workflow/samchon
-git clone https://github.com/samchon/evidence-graph.git ~/workflow/samchon/evidence-graph
-git clone --branch v0.20.0 https://github.com/samchon/ttsc.git ~/workflow/samchon/ttsc
-cd ~/workflow/samchon/evidence-graph
+git clone https://github.com/samchon/lint-plugin-evidence.git ~/workflow/lint-plugin-evidence
+cd ~/workflow/lint-plugin-evidence
 pnpm install --frozen-lockfile
 pnpm test
 ```
 
-The `ttsc` revision must remain compatible with the contributor's shim and
-lint APIs. The GitHub Actions test and release workflows use this same
-`samchon/evidence-graph` plus `samchon/ttsc` layout. If this repository is
-embedded as a nested submodule under another workspace, the JavaScript and
-`ttsc` plugin tests remain valid, but `go test ./native` needs either the
-canonical sibling checkout above or equivalent local replacement paths.
+The `ttsc` version in the lockfile must remain compatible with the contributor's shim and lint APIs. The same command works from a normal clone or a submodule checkout.
 
 ### Configure
 
