@@ -902,6 +902,7 @@ func collectTypeScriptDeclarations(
 		hosts           symbolSet
 		hostIDs         map[string]bool
 		semanticHostIDs map[string]bool
+		hostAnchors     []evidenceHost
 	}
 	semanticHostsByNode := map[*shimast.Node]map[string]bool{}
 	for unitID, nodes := range inventory.UnitNodes {
@@ -926,6 +927,7 @@ func collectTypeScriptDeclarations(
 				node:            doc,
 				hosts:           supportedHosts[node],
 				semanticHostIDs: semanticHostsByNode[node],
+				hostAnchors:     typeScriptHostAnchors(location, node, supportedHosts[node], inventory.Units),
 			}
 			if len(candidate.hosts) != 0 {
 				candidate.hostIDs = map[string]bool{
@@ -937,6 +939,7 @@ func collectTypeScriptDeclarations(
 				docs[key] = candidate
 				continue
 			}
+			current.hostAnchors = mergeEvidenceHosts(current.hostAnchors, candidate.hostAnchors)
 			for symbol := range candidate.hosts {
 				if current.hosts == nil {
 					current.hosts = symbolSet{}
@@ -1000,6 +1003,7 @@ func collectTypeScriptDeclarations(
 				Target:           parsed.Target,
 				Reason:           parsed.Reason,
 				Hosts:            entry.hosts,
+				HostAnchors:      translateEvidenceHostLines(content, entry.hostAnchors),
 				ExclusionCarrier: len(entry.hosts) != 0,
 				Path:             location,
 				Line:             baseLine + parsed.LineOffset,
@@ -1197,3 +1201,60 @@ func encodeTypeScriptIdentity(identity []string) string {
 	}
 	return builder.String()
 }
+
+func typeScriptHostAnchors(
+	path string,
+	node *shimast.Node,
+	hosts symbolSet,
+	units []*evidenceUnit,
+) []evidenceHost {
+	if node == nil || len(hosts) == 0 {
+		return nil
+	}
+	anchors := []evidenceHost{}
+	for _, unit := range units {
+		if unit == nil || !hosts.contains(unit.Symbol) || unit.Line < node.Pos() || unit.Line > node.End() {
+			continue
+		}
+		anchors = append(anchors, evidenceHost{
+			Target: unit.Target,
+			Symbol: unit.Symbol,
+			Path:   path,
+			Line:   unit.Line,
+		})
+	}
+	return mergeEvidenceHosts(nil, anchors)
+}
+
+func mergeEvidenceHosts(base []evidenceHost, additions []evidenceHost) []evidenceHost {
+	seen := map[string]bool{}
+	merged := make([]evidenceHost, 0, len(base)+len(additions))
+	for _, host := range append(base, additions...) {
+		key := host.Path + ":" + host.Target + ":" + host.Symbol + ":" + decimal(host.Line)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		merged = append(merged, host)
+	}
+	sort.Slice(merged, func(left int, right int) bool {
+		if merged[left].Target != merged[right].Target {
+			return merged[left].Target < merged[right].Target
+		}
+		if merged[left].Symbol != merged[right].Symbol {
+			return merged[left].Symbol < merged[right].Symbol
+		}
+		return merged[left].Line < merged[right].Line
+	})
+	return merged
+}
+
+func translateEvidenceHostLines(content string, hosts []evidenceHost) []evidenceHost {
+	translated := make([]evidenceHost, 0, len(hosts))
+	for _, host := range hosts {
+		host.Line = lineAt(content, host.Line)
+		translated = append(translated, host)
+	}
+	return translated
+}
+

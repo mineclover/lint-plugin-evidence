@@ -11,3 +11,6 @@ export * from "./IEvidenceGraphReferenceBase";
 export * from "./IEvidenceGraphSwaggerReference";
 export * from "./IEvidenceGraphTypeScriptClaim";
 export * from "./IEvidenceGraphTypeScriptReference";
+export * from "./IEvidenceGraphIndexOutput";
+export * from "./IEvidenceGraphResolvedIndex";
+

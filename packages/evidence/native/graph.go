@@ -88,7 +88,13 @@ func (graphRule) Check(ctx *rule.ProjectContext) {
 		loader,
 	)
 	problems = append(problems, stateProblems...)
-	problems = append(problems, evaluateEvidenceGraph(states, loader)...)
+	evaluation := evaluateEvidenceGraphDetailed(states, loader)
+	problems = append(problems, evaluation.Problems...)
+	if len(problems) == 0 && config.IndexOutput != "" {
+		if problem := writeResolvedEvidenceIndex(root, config.IndexOutput, states, evaluation.Resolved); problem != "" {
+			problems = append(problems, problem)
+		}
+	}
 	reportProblems(ctx, problems)
 	if len(problems) == 0 {
 		// Published only on a clean evaluation, because the host reads state
@@ -405,11 +411,24 @@ func materializeClaimStates(
 	return states, problems
 }
 
+type evidenceEvaluation struct {
+	Problems []string
+	Resolved map[string]*evidenceUnit
+}
+
 func evaluateEvidenceGraph(
 	states []claimState,
 	loader *typeScriptLoader,
 ) []string {
+	return evaluateEvidenceGraphDetailed(states, loader).Problems
+}
+
+func evaluateEvidenceGraphDetailed(
+	states []claimState,
+	loader *typeScriptLoader,
+) evidenceEvaluation {
 	problems := []string{}
+	unitsByID := map[string]*evidenceUnit{}
 	targets := map[string]map[string]*evidenceUnit{}
 	markdownTargets := map[string]map[string]*evidenceUnit{}
 	// Scoped targets are keyed by owning file as well as name, which is what
@@ -424,6 +443,20 @@ func evaluateEvidenceGraph(
 	scopedHidden := map[scopedTargetKey]*evidenceUnit{}
 	for _, state := range states {
 		for _, reference := range state.References {
+			for _, unit := range reference.Units {
+				unitsByID[unit.ID] = unit
+			}
+			for _, unit := range reference.Scopes {
+				unitsByID[unit.ID] = unit
+			}
+			for _, address := range reference.Published {
+				if address.Unit != nil {
+					unitsByID[address.Unit.ID] = address.Unit
+				}
+			}
+			for _, unit := range reference.Hidden {
+				unitsByID[unit.ID] = unit
+			}
 			for _, unit := range reference.Hidden {
 				for _, address := range append([]string{unit.Target}, unit.Aliases...) {
 					hiddenTargets[address] = unit
@@ -518,7 +551,7 @@ func evaluateEvidenceGraph(
 	}
 	sort.Strings(declarationIDs)
 
-	resolved := map[string]string{}
+	resolved := map[string]*evidenceUnit{}
 	for _, id := range declarationIDs {
 		declaration := declarations[id]
 		context := declarationObligationContext(owners[id])
@@ -541,7 +574,7 @@ func evaluateEvidenceGraph(
 				problems = append(problems, problem)
 				continue
 			}
-			resolved[id] = unitID
+			resolved[id] = unitsByID[unitID]
 			continue
 		}
 		if declaration.Type == artifactTypeScript &&
@@ -594,8 +627,8 @@ func evaluateEvidenceGraph(
 				"Unresolved evidence target '"+declaration.Target+"' at "+declaration.location()+" for "+context+": no configured source materializes that evidence unit. Correct the target, or make one of the named references select the source unit this claim actually uses.",
 			)
 		case 1:
-			for unitID := range candidates {
-				resolved[id] = unitID
+			for _, unit := range candidates {
+				resolved[id] = unit
 			}
 		default:
 			descriptions := make([]string, 0, len(candidates))
@@ -669,7 +702,11 @@ func evaluateEvidenceGraph(
 				scopesByID[scope.ID] = scope
 			}
 			for _, declaration := range state.Declarations {
-				scopeID := resolved[declaration.ID]
+				resolvedUnit := resolved[declaration.ID]
+				if resolvedUnit == nil {
+					continue
+				}
+				scopeID := resolvedUnit.ID
 				covered := reference.UnitsByScope[scopeID]
 				if len(covered) == 0 {
 					continue
@@ -837,7 +874,7 @@ func evaluateEvidenceGraph(
 		}
 	}
 	for _, id := range declarationIDs {
-		if resolved[id] == "" || participates[id] {
+		if resolved[id] == nil || participates[id] {
 			continue
 		}
 		declaration := declarations[id]
@@ -878,7 +915,7 @@ func evaluateEvidenceGraph(
 			"Non-participating @"+string(declaration.Tag)+" target '"+displayTarget(declaration.Target)+"' at "+declaration.location()+" for "+context+": the target resolves, but none of this declaration's configured references selects it. Correct the target or reference, or move the tag to an eligible host or exclusion carrier in the claim that owes it; a resolving tag must discharge at least one obligation.",
 		)
 	}
-	return problems
+	return evidenceEvaluation{Problems: problems, Resolved: resolved}
 }
 
 // declarationEligibleForClaim keeps ownership evidence on the selected host

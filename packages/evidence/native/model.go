@@ -32,7 +32,8 @@ const (
 )
 
 type graphConfig struct {
-	Claims []claimSpec
+	Claims      []claimSpec
+	IndexOutput string
 }
 
 type claimSpec struct {
@@ -174,6 +175,7 @@ type evidenceDeclaration struct {
 	Target          string
 	Reason          string
 	Hosts           symbolSet
+	HostAnchors     []evidenceHost
 	// ExclusionCarrier permits only @evidenceExclude to participate without a
 	// selected host kind. File matching, target resolution, and claim-reference
 	// ownership still decide the obligations it can discharge.
@@ -181,6 +183,16 @@ type evidenceDeclaration struct {
 	Path             string
 	Line             int
 	Sequence         int
+}
+
+// evidenceHost is intentionally expressed in public source terms rather than
+// compiler-graph ids. The graph producer stays replaceable and consumers can
+// resolve this anchor against their own current artifact.
+type evidenceHost struct {
+	Target string
+	Symbol string
+	Path   string
+	Line   int
 }
 
 func (declaration *evidenceDeclaration) location() string {

@@ -21,7 +21,7 @@ func decodeGraphConfig(raw json.RawMessage) (graphConfig, []string) {
 	if problem != "" {
 		return config, []string{problem}
 	}
-	problems := rejectUnknownFields(object, []string{"claims"}, graphRuleName, "configuration")
+	problems := rejectUnknownFields(object, []string{"claims", "index"}, graphRuleName, "configuration")
 	claimRaw, exists := object["claims"]
 	if !exists {
 		problems = append(problems, "Invalid evidence/graph configuration at claims: the required claim array is missing.")
@@ -43,7 +43,30 @@ func decodeGraphConfig(raw json.RawMessage) (graphConfig, []string) {
 			config.Claims = append(config.Claims, claim)
 		}
 	}
+	if rawIndex, exists := object["index"]; exists {
+		output, indexProblems := decodeIndexOutput(rawIndex)
+		problems = append(problems, indexProblems...)
+		if len(indexProblems) == 0 {
+			config.IndexOutput = output
+		}
+	}
 	return config, problems
+}
+
+func decodeIndexOutput(raw json.RawMessage) (string, []string) {
+	object, problem := decodeObject(raw, "index")
+	if problem != "" {
+		return "", []string{problem}
+	}
+	problems := rejectUnknownFields(object, []string{"output"}, graphRuleName, "index")
+	var output string
+	if rawOutput, exists := object["output"]; !exists || json.Unmarshal(rawOutput, &output) != nil || strings.TrimSpace(output) == "" {
+		problems = append(problems, "Invalid evidence/graph configuration at index.output: expected a non-empty project-relative JSON path.")
+	}
+	if len(problems) != 0 {
+		return "", problems
+	}
+	return output, nil
 }
 
 func decodeClaim(raw json.RawMessage, index int) (claimSpec, []string) {

@@ -1,4 +1,5 @@
 import type { IEvidenceGraphClaim } from "./IEvidenceGraphClaim";
+import type { IEvidenceGraphIndexOutput } from "./IEvidenceGraphIndexOutput";
 
 /**
  * The root declaration of a project's evidence graph.
@@ -17,4 +18,14 @@ export interface IEvidenceGraphConfig {
    * would enable the rule without establishing any evidence obligation.
    */
   claims: IEvidenceGraphClaim[];
+
+  /**
+   * Optional project-relative destination for the resolved declaration index.
+   *
+   * The index is a producer-neutral hand-off: it records evidence declarations,
+   * their resolved targets, and public TypeScript host anchors without assuming
+   * a particular compiler-graph node-id format. Consumers such as semantic
+   * metadata plugins resolve those anchors against their own graph artifact.
+   */
+  index?: IEvidenceGraphIndexOutput;
 }
